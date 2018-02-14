@@ -12,11 +12,17 @@ namespace forms_navigation
             DependencyService.Register<IDialogService, DialogService>();
             DependencyService.Register<INavigationService, NavigationService>();
 
-            var nav = DependencyService.Get<INavigationService>();
-            nav.ConfigureMap<MainViewModel, MainPage>();
-            nav.ConfigureMap<SecondViewModel, SecondPage>();
-            nav.ConfigureMap<LastViewModel, LastPage>();
-            nav.InitializeAsync<MainViewModel>();
+            NavigationService.ConfigureMap<MainViewModel, MainPage>();
+            NavigationService.ConfigureMap<SecondViewModel, SecondPage>();
+            NavigationService.ConfigureMap<LastViewModel, LastPage>();
+
+            Initialize();
+        }
+
+        async void Initialize()
+        {
+            var navigationService = DependencyService.Get<INavigationService>();
+            await navigationService.NavigateToAsync<MainViewModel>();
         }
 
         protected override void OnStart()

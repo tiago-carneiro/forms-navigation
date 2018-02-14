@@ -8,50 +8,61 @@ namespace forms_navigation
 {
     public interface INavigationService
     {
-        void ConfigureMap<TViewModel, TPage>() where TViewModel : ViewModelBase where TPage : Page;
-        Task InitializeAsync<TViewModel>() where TViewModel : ViewModelBase;
         Task NavigateToAsync<TViewModel>() where TViewModel : ViewModelBase;
         Task NavigateToAsync<TViewModel>(object parameter) where TViewModel : ViewModelBase;
         Task NavigateBackAsync();
         Task NavigateAndClearBackStackAsync<TViewModel>(object parameter = null) where TViewModel : ViewModelBase;
+        Task NavigateAndClearBackStackAsync(Type type, object parameter = null);
+        Task OpenModalAsync<TViewModel>() where TViewModel : ViewModelBase;
+        Task OpenModalAsync<TViewModel>(object parameter) where TViewModel : ViewModelBase;
+        Task CloseModalAsync();
     }
 
     public class NavigationService : INavigationService
     {
-        static readonly Dictionary<Type, Type> _mappings = new Dictionary<Type, Type>();
         protected Application CurrentApplication => Application.Current;
 
-        public void ConfigureMap<TViewModel, TPage>() where TViewModel : ViewModelBase
-                                                          where TPage : Page
-            => _mappings.Add(typeof(TViewModel), typeof(TPage));
+        static readonly Dictionary<Type, Type> _mappings = new Dictionary<Type, Type>();
 
-        public async Task InitializeAsync<TViewModel>() where TViewModel : ViewModelBase
-            => await NavigateToAsync<TViewModel>(null, false);
+        public static void ConfigureMap<TViewModel, TPage>() where TViewModel : ViewModelBase
+                                                          where TPage : Page
+        {
+            if (!_mappings.ContainsKey(typeof(TViewModel)))
+                _mappings.Add(typeof(TViewModel), typeof(TPage));
+        }
 
         public async Task NavigateToAsync<TViewModel>() where TViewModel : ViewModelBase
-            => await NavigateToAsync<TViewModel>(null, false);
+            => await NavigateToAsync(typeof(TViewModel), null, false, false);
 
         public async Task NavigateToAsync<TViewModel>(object parameter) where TViewModel : ViewModelBase
-            => await NavigateToAsync<TViewModel>(parameter, false);
+            => await NavigateToAsync(typeof(TViewModel), parameter, false, false);
 
         public async Task NavigateAndClearBackStackAsync<TViewModel>(object parameter = null) where TViewModel : ViewModelBase
-            => await NavigateToAsync<TViewModel>(parameter, true);
+            => await NavigateToAsync(typeof(TViewModel), parameter, true, false);
 
         public async Task NavigateBackAsync()
-             => await CurrentApplication?.MainPage?.Navigation.PopAsync();
+            => await PopAsync(false);
 
-        async Task NavigateToAsync<TViewModel>(object parameter, bool cleanBackStack) where TViewModel : ViewModelBase
+        async Task NavigateToAsync(Type type, object parameter, bool cleanBackStack, bool modal)
         {
-            var page = CreateAndBindPage(typeof(TViewModel), parameter);
+            var page = CreateAndBindPage(type, parameter);
 
             var navigationPage = CurrentApplication.MainPage as NavigationPage;
+            var masterDetailPage = CurrentApplication.MainPage as MasterDetailPage;
+            var isMasterDetailpage = masterDetailPage != null;
+
+            if (isMasterDetailpage)
+                navigationPage = masterDetailPage.Detail as NavigationPage;
 
             if (navigationPage == null)
                 CurrentApplication.MainPage = new NavigationPage(page);
             else
-                await navigationPage.PushAsync(page);
-
-            await (page.BindingContext as ViewModelBase).InitializeAsync(parameter);
+            {
+                if (modal)
+                    await navigationPage.Navigation.PushModalAsync(page);
+                else
+                    await navigationPage.PushAsync(page);
+            }
 
             if (navigationPage != null && cleanBackStack && navigationPage.Navigation.NavigationStack.Count > 0)
             {
@@ -63,7 +74,18 @@ namespace forms_navigation
                         navigationPage.Navigation.RemovePage(existingPage);
                 }
             }
+
+            if (isMasterDetailpage)
+                masterDetailPage.IsPresented = false;
+
+            if (parameter == null)
+                await (page.BindingContext as ViewModelBase).InitializeAsync();
+            else
+                await (page.BindingContext as ViewModelBase).InitializeAsync(parameter);
         }
+
+        public async Task NavigateAndClearBackStackAsync(Type type, object parameter = null)
+                => await NavigateToAsync(type, parameter, true, false);
 
         Type GetPageTypeForViewModel(Type viewModelType)
         {
@@ -84,6 +106,29 @@ namespace forms_navigation
             ViewModelBase viewModel = Activator.CreateInstance(viewModelType) as ViewModelBase;
             page.BindingContext = viewModel;
             return page;
+        }
+
+        public async Task OpenModalAsync<TViewModel>() where TViewModel : ViewModelBase
+            => await NavigateToAsync(typeof(TViewModel), null, false, true);
+
+        public async Task OpenModalAsync<TViewModel>(object parameter) where TViewModel : ViewModelBase
+             => await NavigateToAsync(typeof(TViewModel), parameter, false, true);
+
+        public async Task CloseModalAsync()
+            => await PopAsync(true);
+
+        async Task PopAsync(bool modal)
+        {
+            var navigationPage = CurrentApplication.MainPage as NavigationPage;
+            var masterDetailPage = CurrentApplication.MainPage as MasterDetailPage;
+
+            if (masterDetailPage != null)
+                navigationPage = masterDetailPage.Detail as NavigationPage;
+
+            if (modal)
+                await navigationPage.Navigation.PopModalAsync();
+            else
+                await navigationPage.PopAsync();
         }
     }
 }
