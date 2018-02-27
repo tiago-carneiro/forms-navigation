@@ -78,6 +78,8 @@ namespace forms_navigation
             if (isMasterDetailpage)
                 masterDetailPage.IsPresented = false;
 
+            await Task.Delay(250);
+
             if (parameter == null)
                 await (page.BindingContext as ViewModelBase).InitializeAsync();
             else
